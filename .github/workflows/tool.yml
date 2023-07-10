@@ -1,0 +1,48 @@
+name: tool
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        haxe:
+        - 4.3.1
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install haxe
+      uses: krdlab/setup-haxe@v1.5.1
+      with:
+        haxe-version: ${{ matrix.haxe }}
+    - name: Install hashlink
+      run: |
+        export ref=2206f8c os=linux arch=amd64
+        wget "https://github.com/HaxeFoundation/hashlink/releases/download/latest/hashlink-$ref-$os-$arch.tar.gz"
+        tar xvzf "hashlink-$ref-$os-$arch.tar.gz"
+        sudo install -v -t /usr/local/lib hashlink-$ref-$os-$arch/libhl.so
+        sudo install -v -t /usr/local/lib hashlink-$ref-$os-$arch/*.hdll
+        sudo install -v -t /usr/local/include hashlink-$ref-$os-$arch/include/*
+        sudo ldconfig -v
+    - name: Install dependencies
+      run: |
+        haxelib git format https://github.com/HaxeFoundation/format.git
+        haxelib install hashlink
+        haxelib install hscript
+    - name: Build debugger.hl
+      run: haxe -hl hldebug.hl -main hld.Main -lib format -lib hscript -dce full -D analyzer-optimize 
+    - name: Upload hldebug.hl
+      uses: actions/upload-artifact@v3
+      with:
+        name: hldebug.hl
+        path: hldebug.hl
+    - name: Build debugger.c
+      run: haxe -hl debugger/out/main.c -main hld.Main -lib format -lib hscript -dce full -D analyzer-optimize
+    - name: Compile
+      run: clang -o hldebug -O3 -std=c11 -m64 -msse2 -mfpmath=sse -L/usr/local/lib -lhl -lm -I debugger/out debugger/out/main.c
+    - name: Upload hldebug linux-amd64
+      uses: actions/upload-artifact@v3
+      with:
+        name: hldebug-linux-amd64
+        path: hldebug
